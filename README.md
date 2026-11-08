@@ -2,7 +2,7 @@
 
 An interactive, 360-degree web environment of my IIT Jodhpur hostel room, built to run smoothly directly in the browser. 
 
-*(Live Demo Link: Add your Vercel link here once deployed)*
+*https://iitj-3d-room.vercel.app/*
 
 ## The Setup
 Everything was modeled, textured, and fully baked in Blender, then brought to the web using **Three.js** and **Next.js**. 

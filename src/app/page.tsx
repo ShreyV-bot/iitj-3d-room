@@ -1,69 +1,157 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { type ComponentRef, Suspense, useEffect, useLayoutEffect, useRef } from 'react'
+import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber'
+import { OrbitControls, useProgress } from '@react-three/drei'
+import * as THREE from 'three'
+
+const IMAGE_URL = '/images/room-360.jpg' // must be a 2:1 equirectangular image (public/images/room-360.jpg)
+
+// Zoom is done by changing the field of view (NOT by moving the camera).
+// Landscape screens: value = vertical FOV. Portrait screens: value = horizontal FOV.
+const DEFAULT_FOV = 60
+const MIN_FOV = 25
+const MAX_FOV = 80
+const MAX_HFOV = 100 // wider than this and rectilinear projection stretches the edges badly
+
+// Rotates the sphere so the CENTER of your image (= the direction your Blender camera
+// was facing) is what you see on load. Change this to pick a different starting view.
+const INITIAL_YAW = -Math.PI / 2
+
+/** Convert the user's zoom value into a vertical FOV that looks right on any aspect ratio. */
+function fitVerticalFov(zoomFov: number, aspect: number) {
+  const tanHalf = Math.tan(THREE.MathUtils.degToRad(zoomFov) / 2)
+  const vertTan =
+    aspect >= 1
+      ? Math.min(tanHalf, Math.tan(THREE.MathUtils.degToRad(MAX_HFOV) / 2) / aspect)
+      : tanHalf / aspect
+  return Math.min(THREE.MathUtils.radToDeg(2 * Math.atan(vertTan)), 120)
+}
+
+function Panorama() {
+  const texture = useLoader(THREE.TextureLoader, IMAGE_URL)
+  const maxAnisotropy = useThree((s) => s.gl.capabilities.getMaxAnisotropy())
+
+  useLayoutEffect(() => {
+    // Without this the image looks washed out / wrong brightness
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.anisotropy = maxAnisotropy
+    texture.needsUpdate = true
+  }, [texture, maxAnisotropy])
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    // scale x = -1 un-mirrors the image (a BackSide sphere shows it flipped horizontally)
+    <mesh scale={[-1, 1, 1]} rotation={[0, INITIAL_YAW, 0]}>
+      <sphereGeometry args={[500, 64, 48]} />
+      {/* toneMapped={false} stops R3F's default ACES tone mapping from changing your Blender colors */}
+      <meshBasicMaterial map={texture} side={THREE.BackSide} toneMapped={false} />
+    </mesh>
+  )
+}
+
+function Controls() {
+  const controls = useRef<ComponentRef<typeof OrbitControls>>(null)
+  const gl = useThree((s) => s.gl)
+  const zoom = useRef(DEFAULT_FOV)
+
+  // Mouse wheel + touch pinch -> change FOV (the camera never leaves the center)
+  useEffect(() => {
+    const el = gl.domElement
+    const clamp = (v: number) => THREE.MathUtils.clamp(v, MIN_FOV, MAX_FOV)
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY
+      zoom.current = clamp(zoom.current + dy * 0.05)
+    }
+
+    const pointers = new Map<number, { x: number; y: number }>()
+    let pinchStart = 0
+    let zoomStart = 0
+    const pinchDistance = () => {
+      const [a, b] = [...pointers.values()]
+      return Math.hypot(a.x - b.x, a.y - b.y)
+    }
+    const onDown = (e: PointerEvent) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (pointers.size === 2) {
+        pinchStart = pinchDistance()
+        zoomStart = zoom.current
+      }
+    }
+    const onMove = (e: PointerEvent) => {
+      if (!pointers.has(e.pointerId)) return
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (pointers.size === 2 && pinchStart > 0) {
+        zoom.current = clamp((zoomStart * pinchStart) / pinchDistance())
+      }
+    }
+    const onUp = (e: PointerEvent) => {
+      pointers.delete(e.pointerId)
+      pinchStart = 0
+    }
+
+    el.addEventListener('wheel', onWheel, { passive: false })
+    el.addEventListener('pointerdown', onDown)
+    el.addEventListener('pointermove', onMove)
+    el.addEventListener('pointerup', onUp)
+    el.addEventListener('pointercancel', onUp)
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('pointerdown', onDown)
+      el.removeEventListener('pointermove', onMove)
+      el.removeEventListener('pointerup', onUp)
+      el.removeEventListener('pointercancel', onUp)
+    }
+  }, [gl])
+
+  // Smoothly follow the zoom value and adapt the FOV to the current screen shape
+  useFrame((state) => {
+    const cam = state.camera as THREE.PerspectiveCamera
+    const aspect = state.size.width / state.size.height
+    const target = fitVerticalFov(zoom.current, aspect)
+    if (Math.abs(cam.fov - target) > 0.01) {
+      cam.fov = THREE.MathUtils.lerp(cam.fov, target, 0.2)
+      cam.updateProjectionMatrix()
+    }
+    // Negative = "grab the world" feel. Slower when zoomed in so it stays controllable.
+    if (controls.current) controls.current.rotateSpeed = -0.5 * (zoom.current / DEFAULT_FOV)
+  })
+
+  return (
+    <OrbitControls
+      ref={controls}
+      enableZoom={false} // zoom is handled above via FOV
+      enablePan={false}
+      enableDamping
+      dampingFactor={0.08}
+    />
+  )
+}
+
+function Loader() {
+  const { progress } = useProgress()
+  if (progress >= 100) return null
+  return (
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black text-white">
+      Loading 3D Environment… {Math.round(progress)}%
     </div>
-  );
+  )
+}
+
+export default function PortfolioStreetView() {
+  return (
+    <main className="relative h-dvh w-screen cursor-grab overflow-hidden bg-black active:cursor-grabbing">
+      <Canvas
+        dpr={[1, 2]}
+        camera={{ fov: DEFAULT_FOV, near: 0.1, far: 1100, position: [0, 0, 0.1] }}
+      >
+        <Suspense fallback={null}>
+          <Panorama />
+        </Suspense>
+        <Controls />
+      </Canvas>
+      <Loader />
+    </main>
+  )
 }

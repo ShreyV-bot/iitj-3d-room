@@ -1,36 +1,26 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 3D IITJ Hostel Room
 
-## Getting Started
+An interactive, 360-degree web environment of my IIT Jodhpur hostel room, built to run smoothly directly in the browser. 
 
-First, run the development server:
+*(Live Demo Link: Add your Vercel link here once deployed)*
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## The Setup
+Everything was modeled, textured, and fully baked in Blender, then brought to the web using **Three.js** and **Next.js**. 
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+To achieve maximum performance and prevent the need for users to download raw `.glb` geometry, this scene utilizes an **Equirectangular Projection**. The environment was rendered as a highly distorted 4K 360° image and mathematically mapped to the inside of a Three.js sphere to create a seamless "Street View" experience.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Asset Pipeline & Optimization 
+To make this run at a buttery-smooth 60fps in the browser:
+* **Strictly Low-Poly:** Topology was kept extremely minimal.
+* **Baked Lighting:** All ambient occlusion, direct lights, and soft shadows were baked directly into the texture atlas. Zero real-time lighting calculations happen in the browser.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Render vs Wireframe
+<div align="center">
+  <img src="public/images/01_Camera_Rendered.png" alt="Render" width="45%">
+  <img src="public/images/01_Camera_Wireframe.png" alt="Wireframe" width="45%">
+</div>
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Tech Stack
+* **3D Modeling & Rendering:** Blender (Cycles & EEVEE)
+* **Web Engine:** Three.js / React Three Fiber
+* **Framework:** Next.js (App Router)
